@@ -1,0 +1,1118 @@
+---
+title: "TP I IFSBM UE 12: Big Data and predictive models"
+subtitle: "Introduction to machine learning."
+author:
+  - Yoann Pradat, PhDc yoann.pradat@centralesupelec.fr
+  - Julien Vibert, MD, PhD Julien.vibert@gustaveroussy.fr
+Student:
+  - Titouan Guillou, titouan.guillou@student-cs.fr
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+bibliography: references.bib
+link-citations: true
+output:
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+    code_folding: show
+  rmdformats::material:
+    highlight: kate
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+
+```{r ifsbm logo, echo = FALSE, out.width = '50%', fig.align="center"}
+knitr::include_graphics('../../img/ifsbm_logo.jpeg')
+```
+
+# 1. What you will do in this R Notebook
+
+## 1.1 Introduction
+With this notebook you will work on **real cancer genomic data** to address clinical questions.  The problem can be
+summarized this way: your input is a huge amount of variables, such as DNA or RNA sequences for each patient, that you
+wish to use in order to provide clinicians with interpretable information that they can use for their patients.
+
+The main challenge is how to **reduce information so that it becomes understandable for a human**. That is a central
+objective in many machine learning projects.
+
+Extracting biomedical knowledge from high-dimensional molecular data is currently part of the main challenges of
+personalized medicine, so let's hope you'll enjoy this introductive notebook and that it can help you to address your
+current and/or future research challenges.
+
+## 1.2 Main steps
+
+In this notebook, you will be guided through TCGA data. We shall download only parts of the data in order to be able to
+run jobs within a reasonable amount of time. To achieve this we will try to make the most of prior biomedical research
+and reduce our queries to most relevant genes. 
+
+In a first step we will implement simple modelling strategies to perform a classification task from expression data.
+In a second step, we will look into survival data and see how we may assess the prognostic value of some gene
+expressions or mutations. It is where the current science stands! To go further you'll have to become a researcher in
+bioinformatics and machine learning. 
+
+## 1.3 In practice
+
+The code is provided to you. You will just have to follow the instructions all along the notebook.
+Explanations and corrections will be given throughout the notebook for a subset of the questions.
+
+**IMPORTANT**
+There are questions in this notebook that you need to answer and code that you need to write by yourself during the lab
+or at home. The questions are indicated by a tag "QUESTION" while the code you need to write is indicated by a tag
+"INCLASS WORK".
+
+You will have to **complete both** and send the completed notebooks back to us. These completed notebooks will be
+used for evaluating your work in this module and give you a mark.
+
+# 2. Get familiar with R notebooks
+
+## 2.1 What is an R notebook
+
+An  *R notebook* is an R Markdown document (*.Rmd*) with text parts and R code parts (called *chunks*) that can be
+executed independently and interactively. R notebooks can be rendered (or knit) into different formats (*.pdf*, *.html*,
+*.docx*) using a renderer.  The `rmarkdown` R package ([see doc
+here](https://cran.r-project.org/web/packages/rmarkdown/rmarkdown.pdf)) provides a lot of functions to render a
+notebook. 
+
+Running `render('TP_MachineLearning.Rmd', html_document())` from the R console will create a
+file *TP_MachineLearning.html*  that you can then open with your favorite web browser. 
+
+`RStudio` already provides you with commands to render your R notebook by taking into accounts the headers that are
+specified at the top of document. You can knit your notebook with the `Preview` button or by pressing `Ctrl+Shift+K` (OS
+X: `Cmd+Shift+K`).
+
+*Pratical info*: A list of all the keyboard shortcuts for `Rstudio` is available
+[here](https://support.rstudio.com/hc/en-us/articles/200711853-Keyboard-Shortcuts).
+
+Here is an example of YAML headers for specifying the output format.
+
+```yaml
+title: Nineteen Years Later
+author: Harry Potter
+date: July 31, 2016
+output:
+  rmarkdown::html_document:
+    theme: lumen
+```
+
+## 2.2 Execute your first **chunks**
+
+Try executing the following chunk by clicking the `Run` button within the chunk or by placing your cursor inside it and
+pressing `Ctrl+Enter` from within `R Studio`.
+
+```{r welcome} 
+print("Welcome to 'Big Data et predictive models' lab session")
+```
+
+In order to create a new chunk, open it with "\`\`\`{r}" and close it with "\`\`\`". Alternatively, press `Ctrl + Alt +
+I` (OS X:` Cmd + Option + I`) or the Add Chunk button in the tool bar of `R Studio`. Chunks rendering can by customized
+by specifying chunk options among the following
+
+- `include = FALSE` prevents code and results from appearing in the finished file. R Markdown still runs the code in the
+  chunk, and the results can be used by other chunks.
+- `echo = FALSE` prevents code, but not the results from appearing in the finished file. This is a useful way to embed
+  figures.
+- `message = FALSE` prevents messages that are generated by code from appearing in the finished file.
+- `warning = FALSE` prevents warnings that are generated by code from appearing in the finished.
+- `fig.cap = "..."` adds a caption to graphical results.
+- `fig.width = 4` width of the graphical results
+- `fig.height = 3` height of the graphical results
+- `fig.align = "center"` height of the graphical results
+- `dev = "png"` the graphical device to generate plots
+- ...
+
+Options can also be set from within the chunk using the syntax `knitr::opts_chunk$set()`. For instance,
+`knitr::opts_chunk$set(fig.width = 6, fig.height = 6)` will set the figure height and width. For more details about
+chunk options, see the online documentation [https://yihui.org/knitr/options/](https://yihui.org/knitr/options/).
+
+**INCLASS WORK**: Create an `R` chunk that displays a plot of the cosinus and sinus functions on $[-\pi, \pi]$
+without showing the code, with a caption, with a width and height of 8 and 4 respectively. The plot should additionally
+be centered.
+
+```{r graph cos, echo=F, fig.align='center',fig.width = 8, fig.height = 6,fig.cap="Cosinus and Sinus plot"}
+x=seq(-pi,pi,length.out=100)
+plot(x,cos(x),ylab="")
+lines(x,sin(x))
+
+
+```
+
+
+# 3. Classification using expression data.
+
+Over the course of the last three decades, many studies were conducted in which molecular and clinical data from 
+about individuals with particular medical conditions (a specific cancer type for instance) were collected in order to
+describe the **molecular profile** of these conditions and better understand how they influence clinical outcomes.
+
+The Cancer Genome Atlas Project (TCGA), an american-led international consortium, has collected data from  more than
+11,000 cancer patients. Many **tumor types** are represented in this cohort as depicted in the pie plot below.
+
+```{r tcga tumor types, echo = FALSE, out.width = '75%', fig.align="center"}
+knitr::include_graphics('../../img/tcga_types.png')
+```
+
+
+The data that was collected includes **DNA sequencing data** (SNV, SV, CNA), **RNA sequencing data** (microarrays and
+RNA-seq, providing gene expression tables), **methylation data**, **miRNA sequencing data**, **proteomics data** and
+**clinical data**. This *huge* data collection has made possible countless research projects, many of which revealed
+clinical relevant results that redefined our understanding of the cancer genesis and evolution, and continues today to
+fuel active research.
+
+The anonymized data is either in restricted or public access. To access the raw data (sequencing reads) you will need
+the authorization of a data user commitee. To access processed data (e.g gene expression tables), you don't need any
+authorization. It can nevertheless be difficult to retrieve this data by hand and then load it into R. 
+
+In this part of the notebook we will conduct a classification experiment using **expression data** from the TCGA. As you
+may know, the human genome contains tens of thousands of genes giving rise to gene expression tables whose storage may
+required close to 10Gb for the largest cohorts. For practical reasons, we shall only retrieve expression
+data for specific lists of genes.
+
+## 3.1 About the Cancer Gene Census
+
+Using the mutation data collected from large projects, researchers observed that mutations occur in non-random positions
+along the genome and that some loci are more frequently mutated than others in patients presenting a particular
+condition. Modeling and rigorous statistical tests have highlighted signals of positive selection and signals of
+non-random distributions of mutations in certain genes that we now designate as "**cancer genes**" or "**driver genes**"
+whose alterations are thought to be cancer-causing. Many statistical methods were developed to identify these genes and
+methods do not agree completely on which genes are relevant for cancer or not (see reviewing work in
+[@tokheim_evaluating_2016]). One of these lists, called the Cancer Gene Census, is a manually list that only incldues
+genes that have an established role in cancer. This list is used worldwide in many biomedical studies but continue to
+evolve over time.
+
+Since it began in 2004 [@futreal_census_2004], the **Cancer Gene Census** has established a list of over 700 genes  with
+a comprehensive description of all the evidence for their involvement in cancer. The CGC teams lead a very thorough
+curation process for including only genes for which the evidence is unequivocal. The latest paper from the group in
+2018 [@tamborero_cancer_2018] presents the curation process in details and the categorization of genes into **two tier
+lists**.
+
+- Tier 1: genes that "possess a documented and reproducible activity relevant to cancer, along with evidence of
+  mutations in cancer that change the activity of the gene product in a way that promotes oncogenic transformation"
+- Tier 2: "genes with more recently identified roles in oncology, and consists of genes with strong indications of a
+  role in cancer but with less strong mechanistic or functional evidence"
+
+The Cancer Gene Census has already been downloaded for you and is available in the `R_TP1/data` folder under the name
+`CancerGeneCensusCOSMIC_20230117.csv`.
+
+## 3.2 Load expression data from the TCGA
+
+For the purpose of this notebook, we have defined a function that will load the data you need from a list of genes and
+cancer types. The processed data comes from [cBioportal](http://www.cbioportal.org/), a reference website widely used
+for the exploration and downloading of data used in research papers.
+
+For that you will need the official cBioportal R package [cgdsr](http://www.cbioportal.org/rmatlab) and the function `LoadcBioportal.R` available in the `lib` folder of the github repository (if you are curious you can go and check the source code of this function).
+
+To load the function, run the following
+
+```{r load cbioportal function,message=FALSE}
+source("../../lib/LoadcBioportal.R")
+```
+
+For the next steps we will be using `R` libraries. Load them with the following
+
+```{r load libraries expression, message=FALSE, warning=FALSE}
+library(RColorBrewer)
+library(glmnet)
+library(dplyr)
+library(tidyr)
+library(yarrr)
+library(knitr)
+```
+
+The next chunk defines two functions that will be useful for visualizing the results of your classification models. An R
+function may take as input one or multiple arguments that you may change depending on the task you want to perform.
+Execute the chunk in order to load these functions into your R environment.
+
+```{r useful functions expression}
+getColors <- function(vec, pal="Dark2", alpha=0.7){
+  colors <- list()
+
+  palette_predefined <- read.csv("../data/colors.csv")
+  palette_predefined <- setNames(palette_predefined$Color, palette_predefined$Name)
+  palette_default <- brewer.pal(max(length(unique(vec)),3), pal)
+  i <- 1
+  for (v in unique(vec)){
+    if (toupper(v) %in% names(palette_predefined)){
+      colors[[v]] <- adjustcolor(palette_predefined[[toupper(v)]], alpha)
+    } else {
+      colors[[v]] <- adjustcolor(palette_default[[i]], alpha)
+      i <- i+1
+    }
+  }
+  colors
+}
+
+getConfusionMatrix <- function(labelsPredicted, labelsCorrect, labels=NULL){
+  if (is.null(labels)){
+    labels <- unique(union(labelsPredicted, labelsCorrect))
+  } else {
+    labels <- unique(labels)
+  }
+  confMat <- data.frame(row.names=labels)
+
+  for (labelPredicted in labels){
+    for (labelCorrect in labels){
+      confMat[labelPredicted, labelCorrect] <- sum(labelsPredicted==labelPredicted & labelsCorrect==labelCorrect)
+    }
+  }
+
+  confMat
+}
+```
+
+&nbsp;
+
+**INCLASS WORK** Use the `read.csv` function (this function is a base R function so you don't need to load any library
+to use it) to load the Cancer Gene Census file `../data/CancerGeneCensusCOSMIC_20230117.csv` and use the `LoadcBioportal`
+function to load the TCGA RNA and clinical data for `BLCA` and `LUSC` TCGA pan cancer atlas 2018 studies.   You can use
+either the official TCGA nomenclature (BLCA = bladder urothelial carcinoma, LUSC = lung squamous cell carcinoma; see
+[here](https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/tcga-study-abbreviations) for the full list), or the
+name of the organ of origin (e.g lung = luad & lusc, brain = gbm & lgg). Be careful that simply specifying `blca` will
+load **all** BLCA studies available on the cbioportal while `blca_tcga_pan_can_atlas_2018` will consider only the BLCA TCGA
+pan cancer atlas 2018 study. The RNA data should be restricted to only the genes listed in the table in order to limit the memory usage.
+
+&nbsp;
+
+*Hint*: In regular expression (i.e computer language), the "OR" logical connector is writen `|`. Moreoever, in R `T` stands
+for `TRUE` and `F` stands for `FALSE`. Look at the arguments of `LoadcBioportal` to understand the possibilities of the
+function.
+
+&nbsp;
+
+```{r load tcga expression data}
+donne=read.csv("../data/CancerGeneCensusCOSMIC_20230117.csv")
+CgGenes=donne[["Gene.Symbol"]]
+TcgData<-LoadcBioportal(Genes =CgGenes,ClinicNeeded=T, RNANeeded = T, NormalizeRNA=T,MutNeeded=F,MutExtNeeded=F, Organ="blca_tcga_pan_can_atlas_2018|lusc_tcga_pan_can_atlas_2018")
+```
+
+Observe that you didn't load mutation data because of the argument `MutNeeded = F` so the dimensions of the
+`TcgaData$MUT` is [0,0]. The function has selected and sorted the patients so that you have a `TcgaData$EXP` and
+`TcgaData$CLINIC` with the same patients as rows and no NAs.
+
+## 3.3 Description of the data
+
+The first very important step is to visualize and describe your data. It can be tricky when you have huge
+multidimensional matrices. 
+
+For continuous data such as RNA-seq, simply plotting the distribution is a good first step. Observe that the
+`LoadcBioportal` function has performed some processing of the RNA data because of the argument `NormalizeRNA = T`.
+The following chunk display the distribution of normalized gene expression across patients and genes for GBM and LUAD.
+
+```{r visualize expression data per gene, fig.cap="Genes expressions", fig.height=8, fig.width=8, fig.align="center", eval=T}
+set.seed(1995)
+colorsStudy <- getColors(TcgData$CLINIC$study, alpha=1)
+genesExp <- colnames(TcgData$EXP)
+genesHist <- sort(sample(genesExp, size=50, replace=F))
+par(mfrow=c(3,3), mai=c(0.35,0.4,0.35,0.4))
+
+for (geneHist in genesHist){
+  mask_blca <- TcgData$CLINIC$study=="blca"
+  mask_lusc <- TcgData$CLINIC$study=="lusc"
+  DataGene <- rbind(data.frame(Expression=TcgData$EXP[mask_blca,geneHist], Tumor="blca"),
+                    data.frame(Expression=TcgData$EXP[mask_lusc,geneHist], Tumor="lusc"))
+
+  pirateplot(formula=Expression ~ Tumor,
+             data=DataGene,
+             theme=1,
+             quant=NULL,
+             pal=colorsStudy,
+             main=geneHist,
+             xlab="")
+}
+```
+
+A very popular visualisation tool for data matrices are heatmaps. However you may draw a heatmap only if you do not have
+too many samples and too many variables. The `heatmap` base function additionally allows you to perform hierarchical
+clustering of the rows and or the columns to highlight clusters of variables and or samples.
+
+```{r visualize expression data heatmap, fig.cap="Genes expression heatmap", fig.height=8, fig.width=8, fig.align="center", eval=T}
+rowNames <- rownames(TcgData$EXP)
+rowStudy <- TcgData$CLINIC[rowNames, "study"]
+rowSideColors <- sapply(rowStudy, function(x) colorsStudy[[x]])
+heatmap(as.matrix(TcgData$EXP), Rowv=NULL, Colv=NULL, keep.dendro=F, RowSideColors=rowSideColors)
+
+#clustering qui rassemble des patients atteints des cancers vessie et poumons. Genes tout rouge exprimés dans tt les cas. 
+```
+
+**INCLASS_WORK** Answer to the numbered questions throughout the notebook.
+
+&nbsp;
+
+**QUESTION 1)** What are TPM and RPKM? If you were to use `LoadcBioportal` with `NormalizeRNA=F`, what would the RNA expression
+numbers represent?
+
+*Hint*: Read the documentation of cbioportal <https://docs.cbioportal.org/z-score-normalization-script/> to understand
+how gene expressions are stored.
+
+&nbsp;
+
+**ANSWER**:
+
+TPM is Transcript per million and RKPM is reads per kilobaseof transcripts per million. The 2 are normalized measure used for RNA-seq. 
+If we use `LoadcBioportal` with `NormalizeRNA=F`,it means that the data are not preprocessed before and then the RNA expression numbers represent the valu
+
+&nbsp;
+
+**QUESTION 2)** How would you qualify the distribution(s) of the log-min-max normalized RNA data of each gene? Give gene names that
+illustrate the type(s) of distribution you see.
+
+*Hint*: You may play with the value of the random number generator seed in the chunk with plots per gene or remove it
+altogether and run the chunk multiple times to explore different genes.
+
+&nbsp;
+
+**ANSWER**:
+The distribution of RNA data seems normal. Indeed we have the RHOA centered around 0.65, CD73 approximatevely centered around 0.45 for BLCA and 0.62 for LUSC or even SIX1.
+The other main distribution if ones staked at 0. It means that the gene is not expressed a lot. We can see this for the gene ISX,GPC5 (for BLCA) or CRLF2.
+&nbsp;
+
+Another popular way of visualising high-dimensional data is first by reducing its dimension and then visualise it into
+the lower-dimensional representation. The **Principal Component Analysis** with $k$ components allows you to find the
+$k$ dimensional subspace that retains the most of the variance of the data in the original space. PCA of $\mathbf{X}$
+may be performed by performing **Singular Value Decomposition** on the centered matrix.
+
+```{r compute PCA, eval=T}
+X <- t(t(TcgData$EXP) - rowMeans(t(TcgData$EXP)))
+resSVD <- svd(X, nu=2, nv=2)
+# the scores are the principal components i.e the 
+# low-dimensional representations of the samples
+scores <- resSVD$u %*% diag(resSVD$d[1:2])
+```
+
+```{r draw PCA, fig.cap="PCA TCGA expression data", fig.height=6, fig.width=6, fig.align="center", eval=T}
+# plot the two first principal components
+plot(scores[,1],scores[,2],
+     col=unlist(colorsStudy[TcgData$CLINIC$study]), 
+     pch=16,main='PCA representation',
+     xlab=paste("dim1 = ",100*round(resSVD$d[1]^2/sum(resSVD$d^2),3),"%",sep = ""),
+     ylab=paste("dim2 = ",100*round(resSVD$d[2]^2/sum(resSVD$d^2),3),"%",sep = ""))
+legend("bottomright",legend=c("blad","lusc"), pch=16, cex=0.8, col=c(colorsStudy[["blca"]], colorsStudy[["lusc"]]))
+```
+
+## 3.4 Your first classification model
+
+### Train/test split
+
+We would like to have a model to identify the study of origin of the RNA samples from their gene expression. We shall
+continue to rely on the gene expression of only the Cancer Gene Census. In here we are going to fit a `logistic
+regression` model that we saw this morning to perform this classification task.
+
+To begin with, we shall split the data into a training set and a test set.
+
+```{r split train/test, eval=T}
+studySize <- nrow(TcgData$CLINIC)
+trainProp <- 0.8
+trainIndex <- sample(seq(studySize), size=round(studySize*trainProp))
+testIndex <-seq(studySize)[!seq(studySize) %in% trainIndex]
+
+print(paste("Training size:", length(trainIndex)))
+print(paste("Test size:", length(testIndex)))
+```
+
+**QUESTION 3)** Why is it important to split the data into a training set and a test set?
+
+**ANSWER**:
+Necessary because of the need to compare one's predictions with data that has been labelled. If there is no notion of score there is a risk of overfitting. 
+&nbsp;
+
+### Fit the model.
+
+The [glmnet](https://cran.r-project.org/web/packages/glmnet/glmnet.pdf) R package is a great tool for fitting all
+kinds of linear models. GLM stands for for **Generalized Linear Models** which a global family of models that encompass
+many linear models including the linear regression (for continuous predictions), logistic regression (for class
+predictions), Poisson regression (for count data), Gamma regression (log normal data), etc. **Logistic
+regression** is GLM from the **binomial family** of distributions with a **logit link**.
+
+
+**INCLASS WORK** Use the [glmnet](https://cran.r-project.org/web/packages/glmnet/glmnet.pdf) R package to fit a logistic
+regression model on the expression data to predict the study membership of RNA samples.
+
+
+```{r fit glmnet no reg}
+fit<-glmnet(x=TcgData$EXP[trainIndex,],
+    y=TcgData$CLINIC$study[trainIndex],
+    family="binomial",
+    alpha=0,
+    lambda=0,
+    )
+
+# YOUR WORK HERE
+```
+
+**QUESTION 4)** How do you evaluate a classification model? Give at least two metrics you think of to describe the quality of the
+model.
+
+**ANSWER**
+When you want to check the quality of a model, you usely check for the sensitivity and the specificity. The sensitivity (true positive rate) is the probability of a positive test result, conditioned on the individual truly being positive, while the specificity (true negative rate) is the probability of a negative test result, conditioned on the individual truly being negative
+
+&nbsp;
+
+**INCLASS WORK** Evaluate your model on *both* the train and test data by computing [confusion
+matrix](https://en.wikipedia.org/wiki/Confusion_matrix) and the metrics you mentioned in your answer.
+
+```{r confusion matrix no reg}
+labelsCorrectTrain<-TcgData$CLINIC$study[trainIndex]
+labelsPredictedTrain<-predict(fit,newx = as.matrix(TcgData$EXP[trainIndex,]),type = "class")
+confMatTrain<-getConfusionMatrix(labelsPredictedTrain,labelsCorrectTrain)
+
+labelsCorrectTest<-TcgData$CLINIC$study[testIndex]
+labelsPredictedTest<-predict(fit,newx = as.matrix(TcgData$EXP[testIndex,]),type = "class")
+confMatTest<-getConfusionMatrix(labelsPredictedTest,labelsCorrectTest)
+
+ktrain<-kable(confMatTrain, caption='Train')
+ktest<-kable(confMatTest, caption='Test')
+kables(list(ktrain,ktest),format="html",caption="Confusion matrices")
+# YOUR WORK HERE
+```
+
+### Interpret the model.
+
+The medical doctor you are working with is happy to see that you can accurately classify RNA samples according to their
+organ/study of origin. He would like however to understand how the model works and in particular see which genes are the
+most discriminative.
+
+**INCLASS WORK** Extract the coefficients of the model using `coefficients(fit)` and propose a way to visualize the 20 top
+most discriminative genes for classifying between BLCA and LUSC (20 genes discriminative for BLCA, 20 genes
+discriminative for LUSC).Do not forget to exclude the intercept coefficient `(Intercept)` from your selection
+
+```{r}
+coefs=as.matrix(coefficients(fit))
+#Exclude the intercept coefficient with "(Intercept)"
+coefs=coefs[rownames(coefs)!="(Intercept)",,drop=F]
+LuscGenes<-coefs[coefs>0,,drop=F]
+LuscGenes<-LuscGenes[rev(order(LuscGenes))[1:20],,drop=F]
+
+BlcaGenes<-coefs[coefs<0,,drop=F]
+BlcaGenes<-BlcaGenes[(order(BlcaGenes))[1:20],,drop=F]
+
+
+LuscGenes
+BlcaGenes
+
+
+mean(TcgData$EXP[,row.names(LuscGenes)[1]])
+sd(TcgData$EXP[,row.names(LuscGenes)[1]])
+
+mean(TcgData$EXP[,row.names(LuscGenes)[2]])
+sd(TcgData$EXP[,row.names(LuscGenes)[2]])
+
+mean(TcgData$EXP[,row.names(BlcaGenes)[1]])
+sd(TcgData$EXP[,row.names(BlcaGenes)[1]])
+
+mean(TcgData$EXP[,row.names(BlcaGenes)[2]])
+sd(TcgData$EXP[,row.names(BlcaGenes)[2]])
+
+
+```
+
+```{r plot coefs no reg, fig.width=8, fig.height=4, fig.cap="Top genes from Logistic regression", fig.align="center", eval=T}
+ nGenesPlot <- 20
+ ymax <- max(LuscGenes[1], -BlcaGenes[1])
+ ymax <- ceiling(ymax/10**(round(log10(ymax))))*10**(round(log10(ymax)))
+ xx <- barplot(height=c(LuscGenes[1:nGenesPlot], BlcaGenes[1:nGenesPlot]),
+               col=c(rep(colorsStudy[["lusc"]], nGenesPlot), rep(colorsStudy[["blca"]], nGenesPlot)),
+               cex.names=0.7, las=2, ylim=c(-ymax, ymax))
+
+ text(xx[1:nGenesPlot]+1, 
+      y=-1,
+      label=rownames(LuscGenes)[1:nGenesPlot],
+      pos=2,
+      cex=0.7,
+      srt=90)
+
+ text(xx[(nGenesPlot+1):(2*nGenesPlot)]-0.75,
+      y=1,
+      label=rownames(BlcaGenes)[1:nGenesPlot],
+      pos=4,
+      cex=0.7,
+      srt=90)
+```
+ 
+ 
+**QUESTION 5)** For the top and second top most discriminative genes in favor of LUSC and the top and second top most
+discriminative genes in favor of BLCA, give the average value and standard deviation of the normalized expression
+observed in BLCA and LUSC RNA samples respectively.
+
+**ANSWER**: See above
+
+**Comment**: The "second top gene" for classifying towards BLCA - BCORL1 - has a slightly lower mean expression (!) in
+BLCA as compared to LUSC. If drawn side-by-side, the gene expression distribution would totally overlap between BLCA and
+LUSC.
+
+**QUESTION 6)** Can you say these best 40 gene expressions can determine the tumor type as well as the > 700 genes with
+no NAs from the Cancer Gene Census?
+
+*Hint:* To answer this question, you may refit a linear model using only these top 40 genes and assess how well it
+performs on the training and tests sets.
+```{r}
+index_genes=c()
+for (elem in row.names(LuscGenes)){
+  index_genes=c(index_genes,which(colnames(TcgData$EXP)==elem))
+}
+for (elem in row.names(BlcaGenes)){
+  index_genes=c(index_genes,which(colnames(TcgData$EXP)==elem))
+}
+
+index_genes
+
+fit<-glmnet(x=TcgData$EXP[index_genes,],
+    y=TcgData$CLINIC$study[index_genes],
+    family="binomial",
+    alpha=0,
+    lambda=0)
+
+labelsCorrectTrain<-TcgData$CLINIC$study[index_genes]
+labelsPredictedTrain<-predict(fit,newx = as.matrix(TcgData$EXP[index_genes,]),type = "class")
+confMatTrain<-getConfusionMatrix(labelsPredictedTrain,labelsCorrectTrain)
+
+labelsCorrectTest<-TcgData$CLINIC$study[testIndex]
+labelsPredictedTest<-predict(fit,newx = as.matrix(TcgData$EXP[testIndex,]),type = "class")
+confMatTest<-getConfusionMatrix(labelsPredictedTest,labelsCorrectTest)
+
+ktrain<-kable(confMatTrain, caption='Train')
+ktest<-kable(confMatTest, caption='Test')
+kables(list(ktrain,ktest),format="html",caption="Confusion matrices")
+
+```
+
+
+**ANSWER**:
+
+The result is then a little less precise but it definitely stay relevant
+
+**QUESTION 7)** Are you allowed to refit a model on the same data using these top 40 genes and report the results of
+your reduced model in a research paper ignoring/hiding how you came to select these genes? Why?
+
+**ANSWER**:
+
+No you cannot as we did a selection of already relevant variables. We need to separate data and keep a part of the data to be able to evaluate correctly your model. 
+
+## 3.5 A better classification model
+
+Say you want to have a limited list of important genes in your model. It can be useful if a biotech wants to develop a gene signature to determine the tissue of origin of a cancer sample, for example. It is more or less a regularization
+(or penalization) problem: you want to penalize models that have a too high number of discriminative genes (= high
+absolute value of coefficients for **normalized** data).
+
+An existing procedure to penalize models with too high coefficients values is the **lasso regularization**. Lasso (like
+other regularization procedures) comes with an additional parameter to optimize, called the regularization parameter
+$\lambda$. The recommended way to find $\lambda$ is with a **k-fold cross validation strategy**.
+
+As a reminder, below is the objective function that is being minimized in order to find the best coefficients for the
+model
+
+$$\mathcal{L}_{\text{log}} + \lambda \sum_{j=1}^p \beta_j^2$$
+
+where $p$ is the number of variables and $\beta_1, \ldots, \beta_p$ are the model's coefficients.
+
+**INCLASS WORK**: Use the `cv.glmnet` function from `glmnet` to fit a lasso logistic regression model. The
+cross-validation is here to help us find an optimal value of $\lambda$.
+
+```{r fit reg cv, fig.width=8, fig.height=6}
+fitCv<-cv.glmnet(x=TcgData$EXP[trainIndex,],
+    y=TcgData$CLINIC$study[trainIndex],
+    family="binomial",
+    alpha=1,
+    nfolds = 10)
+lambdaBest<-fitCv$lambda.min
+  
+plot(fitCv)
+```
+
+
+**QUESTION 8)** Do you think this model needs important regularization to generalize well, and why?
+
+**ANSWER** Regularization, significantly reduces the variance of the model, without substantial increase in its bias. This model does not need much regularization as the lasso logistic regression curve show that the binomail deviance does not evolve much. 
+
+&nbsp;
+
+**YOUR WORK** Rerun the lasso logistic regression using the optimal values of $\lambda$, evaluate its quality. Show 
+again the values of the coefficients of the top 20 most discriminative genes for both `LUSC` and `BLCA`.
+
+```{r fit glmnet reg best}
+fitCvBest<-glmnet(x=TcgData$EXP[trainIndex,],
+    y=TcgData$CLINIC$study[trainIndex],
+    family="binomial",
+    alpha=1,
+    lambda=lambdaBest)
+
+coefs=as.matrix(coefficients(fitCvBest))
+coefs=coefs[rownames(coefs)!="(Intercept)",,drop=F]
+LuscGenesCv<-coefs[coefs>0,,drop=F]
+LuscGenesCv<-LuscGenesCv[rev(order(LuscGenesCv))[1:20],,drop=F]
+
+BlcaGenesCv<-coefs[coefs<0,,drop=F]
+BlcaGenesCv<-BlcaGenesCv[(order(BlcaGenesCv))[1:20],,drop=F]
+```
+
+```{r plot coefs reg corr, fig.width=8, fig.height=4, fig.cap="Top genes from Reduced Logistic regression", fig.align="center", eval=T}
+ nGenesPlot <- 20
+ ymax <- max(LuscGenesCv[1], -BlcaGenesCv[1])
+ ymax <- ceiling(ymax/10**(round(log10(ymax))))*10**(round(log10(ymax)))
+ xx <- barplot(height=c(LuscGenesCv[1:nGenesPlot], BlcaGenesCv[1:nGenesPlot]),
+               col=c(rep(colorsStudy[["lusc"]], nGenesPlot), rep(colorsStudy[["blca"]], nGenesPlot)),
+               cex.names=0.7, las=2, ylim=c(-ymax, ymax))
+
+ text(xx[1:nGenesPlot]+1, 
+      y=-1,
+      label=rownames(LuscGenesCv)[1:nGenesPlot],
+      pos=2,
+      cex=0.7,
+      srt=90)
+
+ text(xx[(nGenesPlot+1):(2*nGenesPlot)]-0.75,
+      y=1,
+      label=rownames(BlcaGenesCv)[1:nGenesPlot],
+      pos=4,
+      cex=0.7,
+      srt=90)
+```
+
+```{r}
+labelsCorrectTrain<-TcgData$CLINIC$study[index_genes]
+labelsPredictedTrain<-predict(fitCvBest,newx = as.matrix(TcgData$EXP[index_genes,]),type = "class")
+confMatTrain<-getConfusionMatrix(labelsPredictedTrain,labelsCorrectTrain)
+
+labelsCorrectTest<-TcgData$CLINIC$study[testIndex]
+labelsPredictedTest<-predict(fitCvBest,newx = as.matrix(TcgData$EXP[testIndex,]),type = "class")
+confMatTest<-getConfusionMatrix(labelsPredictedTest,labelsCorrectTest)
+
+ktrain<-kable(confMatTrain, caption='Train')
+ktest<-kable(confMatTest, caption='Test')
+kables(list(ktrain,ktest),format="html",caption="Confusion matrices")
+```
+
+ 
+**QUESTION 9)** Has Lasso regularization changed the accuracy of your model? Are you surprised?
+&nbsp;
+
+**ANSWER**:The lasso regularization did improve the accuracy of the model as it is more precise now. It is not suprising as as the value of λ rises, it reduces the value of coefficients and thus reducing the variance. We then have a better accuracy
+&nbsp;
+
+
+**QUESTION 10)** If you go to see a clinician and tell him about your new model, do you think he will want to use it? 
+
+&nbsp;
+
+*Hint*: You may reuse your code from **QUESTION 5)** to illustrate your answer.
+```{r}
+LuscGenesCv
+BlcaGenesCv
+
+mean(TcgData$EXP[,row.names(LuscGenesCv)[1]])
+sd(TcgData$EXP[,row.names(LuscGenesCv)[1]])
+
+mean(TcgData$EXP[,row.names(LuscGenesCv)[2]])
+sd(TcgData$EXP[,row.names(LuscGenesCv)[2]])
+
+mean(TcgData$EXP[,row.names(BlcaGenesCv)[1]])
+sd(TcgData$EXP[,row.names(BlcaGenesCv)[1]])
+
+mean(TcgData$EXP[,row.names(BlcaGenesCv)[2]])
+sd(TcgData$EXP[,row.names(BlcaGenesCv)[2]])
+```
+
+&nbsp;
+
+**ANSWER**: We see that the standard deviation of top gene expression is much lower so it will be more convincing for the medical staff
+
+
+# 4. Brief introduction to survival analysis
+
+Let us now consider the survival data from patients included in the TCGA LUAD study. The next chunk loads libraries that will be useful for this analysis.
+
+```{r load library survival analysis}
+library(survival)
+```
+
+## 4.1 Data loading
+
+The next chunks load mutation, expression, and clinical data from liver hepatocellular carcinoma patients included in
+the TCGA LIHC study.
+
+```{r load data survival}
+CgcTable <- read.csv("../data/CancerGeneCensusCOSMIC_20230117.csv")
+CgcGenes <- CgcTable$Gene.Symbol
+
+TcgaData <- LoadcBioportal(Genes = CgcGenes, Organ = "lihc_tcga_pan_can_atlas_2018", 
+                           ClinicNeeded = T, MutNeeded = T, MutExtNeeded = T, 
+                           RNANeeded = T, NormalizeRNA = T, Tests = F)
+
+TcgaData$CLINIC[TcgaData$CLINIC$OS_STATUS=="0:LIVING", "Vital_Status"] <- "Alive"
+TcgaData$CLINIC[TcgaData$CLINIC$OS_STATUS=="1:DECEASED", "Vital_Status"] <- "Deceased"
+TcgaData$CLINIC[TcgaData$CLINIC$OS_STATUS=="0:LIVING", "OS_STATUS"] <- 0
+TcgaData$CLINIC[TcgaData$CLINIC$OS_STATUS=="1:DECEASED", "OS_STATUS"] <- 1
+TcgaData$CLINIC["OS_STATUS"] <- as.numeric(TcgaData$CLINIC$OS_STATUS)
+```
+
+Unfortunatly, there are some NAs in the data, in particular survival data. In this work, we will handle NAs by just
+discarding them. This is acceptable because there is a low number of such cases. It would not be suitable otherwise. We will also discard patients with survival time of 0.
+
+```{r remove bad survival data}
+patientsWithNAs <- rowSums(is.na(TcgaData$CLINIC[,c("OS_MONTHS", "OS_STATUS")])) > 0
+TcgaData$CLINIC <- TcgaData$CLINIC[!patientsWithNAs,]
+TcgaData$EXP <- TcgaData$EXP[!patientsWithNAs,]
+TcgaData$MUT <- TcgaData$MUT[!patientsWithNAs,]
+TcgaData$MUTEXT <- TcgaData$MUTEXT %>%
+  filter(!case_id %in% gsub("\\.", "-", names(patientsWithNAs)[patientsWithNAs]))
+
+patientsWithZeroOS <- TcgaData$CLINIC$OS_MONTHS == 0
+TcgaData$CLINIC <- TcgaData$CLINIC[!patientsWithZeroOS,]
+TcgaData$EXP <- TcgaData$EXP[!patientsWithZeroOS,]
+TcgaData$MUT <- TcgaData$MUT[!patientsWithZeroOS,]
+TcgaData$MUTEXT <- TcgaData$MUTEXT %>%
+  filter(!case_id %in% gsub("\\.", "-", names(patientsWithZeroOS)[patientsWithZeroOS]))
+```
+
+## 4.2 Data visualisation
+
+### Mutations
+
+Let us load 2 in-house functions for visualizing the extended mutations table and for drawing an overview of the
+landscape of the genes most frequently altered.
+
+```{r visualize  data,echo=F,message=F}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("maftools")
+source("../../lib/RenderTable.R")
+source("../../lib/DrawOncoplot.R")
+```
+
+The next chunk renders the first lines of the extended mutations table.
+```{r,echo=T}
+RenderTable <- function(df, caption, full=F, nrows=5, extensions=c("Buttons", "Responsive"),
+                         buttons=c("copy", "csv", "excel")){
+  if (full){
+    df_render <- df
+  } else {
+    if (nrows==-1){
+      df_render <- df
+    } else {
+      df_render <- utils::head(df, nrows)
+    }
+  }
+
+  DT::datatable(data=df_render, 
+                caption=htmltools::tags$caption(style='caption-side: top; text-align: center; color:black; 
+                                                font-size:150%;',
+                                                caption),
+                extensions=extensions,
+                options=list(dom="Bfrtip", buttons=buttons,
+                             initComplete = htmlwidgets::JS(
+                                               "function(settings, json) {",
+                                               "$(this.api().table().container()).css({'font-size': '10pt'});",
+                                               "}")
+                             )
+  )
+}
+```
+
+<div style = "width:100%; height:auto; margin: auto;">
+```{r show design prism, echo=T}
+RenderTable(TcgaData$MUTEXT, caption="Mutations TCGA LIHC")
+```
+</div>
+
+Let us now have a look at the landscape of mutations.
+
+
+```{r prepare oncoplot, include=F, eval=T} 
+# standardize column names
+df_maf <- TcgaData$MUTEXT %>%
+  rename(Tumor_Sample_Barcode=case_id, Hugo_Symbol=gene_symbol, Chromosome=chr,
+         Start_Position=start_position, End_Position=end_position,
+         Variant_Classification=mutation_type, Reference_Allele=reference_allele,
+         Tumor_Seq_Allele2=variant_allele) %>% mutate(Variant_Type="SNP")
+
+# show only genes mutated in at least 3% of patients
+min_freq <- 0.03
+n_tumors <- TcgaData$STUDY$Mut[1]
+n_tumors_min <- ceiling(min_freq * n_tumors)
+genes_list <- df_maf %>%
+  filter(Hugo_Symbol != "Unknown") %>%
+  distinct(Tumor_Sample_Barcode, Hugo_Symbol) %>%
+  group_by(Hugo_Symbol) %>%
+  summarize(n_tumors=n()) %>%
+  filter(n_tumors >= n_tumors_min) %>%
+  pull(Hugo_Symbol)
+
+# add empty lines for samples without mutations
+df_cln <- TcgaData$CLINIC %>% rownames_to_column(var="Tumor_Sample_Barcode") %>%
+  mutate(Tumor_Sample_Barcode=gsub("\\.", "-", Tumor_Sample_Barcode))
+samples_all <- df_cln$Tumor_Sample_Barcode
+samples_maf <- unique(df_maf$Tumor_Sample_Barcode)
+samples_not_in_maf <- setdiff(samples_all, samples_maf)
+df_maf <- bind_rows(df_maf, tibble(Tumor_Sample_Barcode=samples_not_in_maf))
+
+# sort genes
+genes_sorted <- df_maf %>% distinct(Tumor_Sample_Barcode, Hugo_Symbol) %>% arrange(Hugo_Symbol) %>% 
+  group_by(Hugo_Symbol) %>% summarize(n=n()) %>% arrange(desc(n)) %>% pull(var=Hugo_Symbol)
+genes_list <- intersect(genes_sorted, genes_list)
+
+vc_list <- setdiff(unique(df_maf$Variant_Classification), c("", NA))
+n_genes <- length(genes_list)
+n_tumors <- length(unique(df_cln$Tumor_Sample_Barcode))
+
+vc_palette <- read.csv("../data/colors_oncoplot.csv", sep=";")
+vc_colors <- setNames(vc_palette$Color, vc_palette$Name)
+oncoplot_colors <- list(bg="#f5f3f4",
+                        border="white",
+                        vc=vc_colors,
+                        ann=list(Vital_Status=setNames(c("#2a6f97", "#a9d6e5"), c("Alive", "Deceased"))))
+
+# read into maftools object
+obj_maf <- maftools::read.maf(maf=df_maf,
+                              clinicalData             = df_cln %>% replace(is.na(.), "NA"),
+                              removeDuplicatedVariants = FALSE,
+                              useAll                   = TRUE,            
+                              gisticAllLesionsFile     = NULL,
+                              gisticAmpGenesFile       = NULL,
+                              gisticDelGenesFile       = NULL,
+                              gisticScoresFile         = NULL,
+                              cnLevel                  = NULL,
+                              cnTable                  = NULL,
+                              isTCGA                   = FALSE,
+                              vc_nonSyn                = vc_list,
+                              verbose                  = TRUE)
+
+# clinicalFeatures
+clinicalFeatures <- intersect(c("Vital_Status"), colnames(df_cln))
+if (identical(clinicalFeatures, character(0))) clinicalFeatures <- NULL
+
+png(filename="oncoplot_tcga_lihc.png", width=8, height=8, units="in", res=600)
+DrawOncoplot(obj_maf, genes_list, df_left_bar_data=NULL, df_right_bar_data=NULL,
+             oncoplot_colors=oncoplot_colors, n_genes=n_genes, n_tumors=n_tumors,
+             draw_titv=FALSE, showTumorSampleBarcodes=FALSE, font_size=0.45,
+             df_top_bar_data=NULL, clinicalFeatures=clinicalFeatures)
+dev.off()
+```
+
+```{r draw oncoplot, echo=T, fig.height=8, fig.width=8, fig.align="center", fig.cap="Oncoplot TCGA LIHC", dpi=300,eval=T}
+knitr::include_graphics('oncoplot_tcga_lihc.png')
+```
+
+**QUESTION 11)** Given the distribution of the types of mutations shown on the right plot, can you guess which genes are
+generally inactivated by mutations and which genes are generally activated by mutations in this tumor type? Driver genes
+that are inactivated through mutations are called "**tumorsuppressor genes**" while drivers genes activated through
+mutations are called "**oncogenes**".
+
+&nbsp;
+
+*Hint*: Visit the page <http://www.ensembl.org/info/genome/variation/prediction/predicted_data.html#consequences> to
+learn more about the definition of each type of mutation. You may also use the table `TcgaData$MUT` to see how mutations
+are distributed for a particular gene. The command `table(TcgaData$MUT[,"CTNNB1"])` for instance will tell you how many
+times each specific mutation was seen in the samples from TCGA LIHC study.
+```{r}
+table(TcgaData$MUT[,"CTNNB1"])
+```
+
+&nbsp;
+
+**ANSWER**According to the plot, genes TP53, CTNNB1 and MUC16 are the 3 main genes activated by mutations. Others such as SF3B1, RANBP2 or NFE2L2 are inactivated by mutations
+
+### Survival
+
+The `survfit` function of the survival package compute the cumulative probability of survival taking into account
+censored data in the calculation. At each time step $l$, the cumulative probability $P_{l}$ is calculated by:
+
+$P_{l} = P_{l-1} \cdot \left( \frac{ NatRisk_{l}- Ndeath_{l} }{ NatRisk_{l}} \right)$
+
+The cumulative probability of survival allow you to plot the Kaplan-Meier curve, which is a standard way to visualize
+the distribution of the survival data accross the cohort.
+
+```{r plot survival data, fig.height=6, fig.width=6, fig.align="center"}
+plot(survfit(Surv(time = TcgaData$CLINIC$OS_MONTHS, event=TcgaData$CLINIC$OS_STATUS) ~ NULL),
+     mark.time = T, 
+     main="Kaplan Meier curve", 
+     ylab="Probability of survival", xlab="Time in months")
+
+#Surv crée un objet
+#Courbe qui estime la fonction de Survie ( =proba tps de survie > t) seulement au tps avec des evt ( d'où l'escalier qui se rallong car moins en moins de patients donc moins en moins d'evts)
+```
+
+**QUESTION 12)** Provide an estimate of the median survival time of the patients from the TCGA LIHC study.
+
+&nbsp;
+
+
+**ANSWER** 
+```{r median}
+surv_fit<-survfit(Surv(time = TcgaData$CLINIC$OS_MONTHS, event=TcgaData$CLINIC$OS_STATUS) ~ NULL)
+median_survival_time <- summary(surv_fit)$table[ "median"]
+print(median_survival_time)
+```
+
+&nbsp;
+
+Tumors may be graded or classified according to many classification systems. The AJCC classification system, also
+called, TNM system, provides a risk classification of the tumor according to the tumor size, spread to nearby lymph
+nodes, and spread to other body parts (metastases). 
+
+**INCLASS WORK**: Draw the Kaplan-Meier curves of the LIHC patients stratified by the AJCC classification system. The
+classification is available in the variable `AJCC_PATHOLOGIC_TUMOR_STAGE`. For the purpose of the graph, you should first
+simplify the classification to have only 4 classes, namely `STAGE I/II/III/IV`. 
+
+```{r fig plot survival data, fig.height=6, fig.width=6, fig.align="center"}
+
+TcgaData$CLINIC$AJCC_SIMPLE <- gsub("[A-Ca-b]$", "",
+                                     TcgaData$CLINIC$AJCC_PATHOLOGIC_TUMOR_STAGE)
+ TcgaData$CLINIC[TcgaData$CLINIC$AJCC_SIMPLE=="", "AJCC_SIMPLE"] <- NA
+ stage_unique <- setdiff(sort(unique(TcgaData$CLINIC$AJCC_SIMPLE)), c(NA, ""))
+ stage_colors <- getColors(stage_unique)
+  
+plot(survfit(Surv(time = TcgaData$CLINIC$OS_MONTHS, event=TcgaData$CLINIC$OS_STATUS) ~ TcgaData$CLINIC$AJCC_SIMPLE),
+     mark.time = T, 
+     main="Kaplan Meier curve", 
+     col=unlist(stage_colors),
+     ylab="Probability of survival", xlab="Time in months")
+
+legend("topright",legend=stage_unique,pch=16,cex=0.8,col=sapply(stage_unique,function(x) stage_colors[[x]]))
+
+#AJCC classification selon les types de tumeurs : I: localisés II:plus envahissantes III:ganglions IV:Metastatique
+```
+
+## 4.3 A semi-parametric model survival: the Cox model
+
+In the previous part we trained a binary classification model to learn how to classify between 2 tumor types using
+expression data. Your task now is to predict the survival time of patients using mutations data.
+
+Modeling survival data for various parameters is a historical discipline (Cox introduced his model in his 1972 paper
+[@cox_regression_1972]). In the last two decades, the emergence of inceasingly high-throughput sequencing techniques has
+made the analysis of associations between the molecular profiles and phenotypes of cancers a much more challenging task.
+Predicting the survival time is particularly difficult as you will see in this example. 
+
+Modeling survival looks like a regression task because you have numeric data to predict. However, survival analysis is a
+distinct discipline due to the fact that the observation of the outcome is not always complete. The observed time may be
+left-censored (the patient was alive on the last date he visited the hospital), right-censored (the patient entered the
+trial some time after the start of their disease), or both. Analysis and modeling of censored data calls for specific
+techniques and the Cox model is the most famous example.
+
+**INCLASS WORK**: Build a matrix with the survival data (`OS_MONTHS`, `OS_STATUS`) and the mutation status (1/0) of all
+genes mutated in at least 3% of the cohort. You should then define train and test indices and fit a Cox model on the
+train data and assess the model performance on the test data. The performance of the model may be assessed via the
+C-index. Eventually, visualize the model top negative and positive coefficients to get insight into the genes that are
+predicive of good and poor prognosis.
+
+&nbsp;
+
+*Hint*: You may mirror the code we have used for training logistic regression models. Use once again the
+`glmnet` function changing `family = "binomial"` to `family = "cox"` in order to train a Cox model. The `y` argument of
+the glmnet function should be a `Surv` object as in the chunk of the first Kaplan-Meier curve above. Mutations statuses
+may be obtained directly from `TcgaData$MUT` after conversion of the aminoacid changes to 1/0 status or may be obtained
+by processing `TcgaData$MUTEXT`. 
+```{r cox model}
+# select survival variables
+SurvivalData <- TcgaData$CLINIC  %>% select(OS_STATUS, OS_MONTHS)
+
+# convert amino acid changes to 1/0
+MutationsData <- TcgaData$MUT
+ MutationsData[MutationsData!="NaN"] <- 1
+ MutationsData[MutationsData=="NaN"] <- NA
+ MutationsData[is.na(MutationsData)] <- 0
+ MutationsData <- matrix(as.numeric(MutationsData),
+                         ncol=ncol(MutationsData),
+                         dimnames=list(rownames(MutationsData), colnames(MutationsData)))
+
+ # select genes mutated in at least 3% of the cohort
+ min_freq <- 0.03
+ n_tumors <- nrow(SurvivalData)
+ n_tumors_min <- ceiling(min_freq * n_tumors)
+ genes_all <- colnames(MutationsData)
+ genes_min <- genes_all[colSums(MutationsData) >= n_tumors_min]
+ MutationsData <- MutationsData[,genes_min]
+
+ # assemble
+ CoxData <- cbind(SurvivalData, MutationsData)
+ predictors <- colnames(MutationsData)
+
+ #### YOUR WORK HERE
+
+ #### 1. Split data into train/test
+ nTumors<-nrow(CoxData)
+nTumorsMin<-ceiling(0.03*nTumors)
+predictors<-colnames(MutationsData[,colSums(MutationsData)>=nTumorsMin])
+
+studySize <- nTumors
+trainProp <- 0.8
+trainIndex <- sample(seq(studySize),size=round(studySize*trainProp))
+testIndex <-seq(studySize)[!seq(studySize) %in% trainIndex]
+
+ #### 2. Learn best value of lambda using cv.glmnet
+CoxCv<-cv.glmnet(x=as.matrix(CoxData[trainIndex,predictors]),
+    y=Surv(CoxData$OS_MONTHS[trainIndex],CoxData$OS_STATUS[trainIndex]),
+    family="cox",
+    alpha=1,
+    nfolds = 10)
+lambdaBestCox<-fitCv$lambda.min
+
+plot(fitCv)
+ #### 3. Train model using the best value of lambda
+fitCox<-glmnet(x=CoxData[trainIndex,predictors],
+    y=Surv(CoxData$OS_MONTHS[trainIndex],CoxData$OS_STATUS[trainIndex]),
+    family="cox",
+    lambda=lambdaBestCox)
+
+ #### 4. Extract "Good" (coefficients < 0) and "Bad" (coefficients > 0) into the vectors GoodGenes and BadGenes
+coefs=as.matrix(coefficients(fitCox))
+coefs=coefs[rownames(coefs)!="(Intercept)",,drop=F]
+GoodGenes<-coefs[coefs>0,,drop=F]
+BadGenes<-coefs[coefs<0,,drop=F]
+
+ #### 5. Draw the coefficients
+ nGenesPlot <- 10
+ ymax <- max(BadGenes[1], -GoodGenes[1])
+ #ymax <- ceiling(ymax/10**(round(log10(ymax))))*10**(round(log10(ymax)))
+ xx <- barplot(height=c(BadGenes[1:nGenesPlot], GoodGenes[1:nGenesPlot]),
+               col=c(rep("#ff758f", nGenesPlot), rep("#aacc00", nGenesPlot)),
+               cex.names=0.7, las=2)
+ 
+ #Issue with ymax producing Nan so i delete the ylim parameter
+
+ text(xx[1:nGenesPlot]+0.5, 
+      y=-0.05,
+      label=rownames(BadGenes)[1:nGenesPlot],
+      pos=2,
+      cex=0.7,
+      srt=90)
+
+ text(xx[(nGenesPlot+1):(2*nGenesPlot)]-0.5,
+      y=0.05,
+      label=rownames(GoodGenes)[1:nGenesPlot],
+      pos=4,
+      cex=0.7,
+      srt=90)
+```
+
+**QUESTION 13)** How would you explain to a clinician (mathematical words not allowed) what a C-index is? Comment on the
+C-index of your model (good enough to use in clinic?).
+
+**ANSWER**A C-index is a measure of how well a predictive model, such as a risk score or a survival model, can distinguish between patients who have a certain outcome (such as death) and those who do not. A C-index of 0.5 means the model is no better than random chance at predicting the outcome, while a C-index of 1 means the model is able to perfectly predict the outcome.
+The Cindex of our model is not extremely high, need to be upgrade.
+
+&nbsp;
+```{r, echo=T}
+# Extract predicted survival probabilities for the training data
+surv_probs <- predict(fitCox, type="response", s=lambdaBestCox, newx=as.matrix(CoxData[trainIndex,predictors]))
+
+# Create survival objects from the training data and predicted probabilities
+true_surv <- Surv(CoxData$OS_MONTHS[trainIndex], CoxData$OS_STATUS[trainIndex])
+cindex <- Cindex(surv_probs,true_surv)
+
+print(cindex)
+
+```
+
+# End
+
+In this workshop you have learned 2 classical machine learning approaches: classification and regression. We have
+addressed the challenge of modeling high dimension data (gene expression) to predict clinically relevant observations.
+
+I hope you have gained experience on the good practices in machine learning and the main residing challenges. Maybe
+these scripts can be useful for your current or future research, do not hesitate to use it.
+
+Thank you!
+
+`r if (knitr::is_html_output()) '# References {-}'`
